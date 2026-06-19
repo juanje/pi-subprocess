@@ -141,6 +141,7 @@ function buildSessionDir(ctx: {
 
 function buildArgs(
   params: DelegateParams,
+  sessionDir: string,
   promptFile: string,
   appendFile: string | null,
 ): string[] {
@@ -149,7 +150,7 @@ function buildArgs(
     "json",
     "-p",
     "--session-dir",
-    "",
+    sessionDir,
     "--system-prompt",
     promptFile,
     ...(appendFile ? ["--append-system-prompt", appendFile] : []),
@@ -198,8 +199,7 @@ export default function piDelegate(pi: ExtensionAPI) {
       writeFileSync(promptFile, DEFAULT_SYSTEM_PROMPT);
       if (appendFile) writeFileSync(appendFile, params.system_prompt as string);
 
-      const args = buildArgs(params, promptFile, appendFile);
-      args[args.indexOf("")] = runDir;
+      const args = buildArgs(params, runDir, promptFile, appendFile);
 
       const messages: Message[] = [];
       let stderr = "";

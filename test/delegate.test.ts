@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -255,10 +255,12 @@ describe("parseJsonlBuffer", () => {
 describe("buildArgs", () => {
   it("builds default args", () => {
     const params: DelegateParams = { task: "investigate logs" };
-    const args = buildArgs(params, "/tmp/system.md", null);
+    const args = buildArgs(params, "/tmp/session", "/tmp/system.md", null);
     expect(args).toContain("--mode");
     expect(args).toContain("json");
     expect(args).toContain("-p");
+    expect(args).toContain("--session-dir");
+    expect(args).toContain("/tmp/session");
     expect(args).toContain("--system-prompt");
     expect(args).toContain("/tmp/system.md");
     expect(args).toContain("--tools");
@@ -268,16 +270,24 @@ describe("buildArgs", () => {
 
   it("includes append system prompt when provided", () => {
     const params: DelegateParams = { task: "do work" };
-    const args = buildArgs(params, "/tmp/sys.md", "/tmp/append.md");
+    const args = buildArgs(params, "/tmp/s", "/tmp/sys.md", "/tmp/append.md");
     expect(args).toContain("--append-system-prompt");
     expect(args).toContain("/tmp/append.md");
   });
 
   it("uses custom tools when provided", () => {
     const params: DelegateParams = { task: "read only", tools: "read" };
-    const args = buildArgs(params, "/tmp/sys.md", null);
+    const args = buildArgs(params, "/tmp/s", "/tmp/sys.md", null);
     expect(args).toContain("read");
     expect(args).not.toContain(DEFAULT_TOOLS);
+  });
+
+  it("places session dir directly in args (no placeholder)", () => {
+    const params: DelegateParams = { task: "work" };
+    const args = buildArgs(params, "/my/session/dir", "/tmp/sys.md", null);
+    const idx = args.indexOf("--session-dir");
+    expect(args[idx + 1]).toBe("/my/session/dir");
+    expect(args).not.toContain("");
   });
 });
 
