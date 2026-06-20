@@ -19,7 +19,7 @@ pi install git+https://github.com/juanje/pi-subprocess.git
 Or load directly without installing:
 
 ```bash
-pi -e /path/to/pi-subprocess/extensions/delegate.ts
+pi -e /path/to/pi-subprocess/extensions/subprocess.ts
 ```
 
 ## Quick start
@@ -39,7 +39,7 @@ The extension registers a `subprocess` tool that:
 1. **Spawns** a child Pi process in JSON mode with its own system prompt
 2. **Streams** the child's JSONL output, collecting `message_end` events
 3. **Extracts** the final assistant text from the child session
-4. **Truncates** the output to a configurable maximum (default: 300 lines)
+4. **Truncates** the output to a configurable maximum (default: 100 lines)
 5. **Returns** the curated text + stats (turns, tool calls, tokens, cost, duration)
 
 ### Context isolation

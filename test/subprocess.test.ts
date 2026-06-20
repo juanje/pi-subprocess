@@ -17,7 +17,7 @@ import {
   type SubprocessParams,
   saveFullOutput,
   truncate,
-} from "../extensions/delegate.js";
+} from "../extensions/subprocess.js";
 
 const tempDirs: string[] = [];
 
