@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,13 +6,16 @@ import {
   buildArgs,
   computeStats,
   DEFAULT_SYSTEM_PROMPT,
+  DEFAULT_TIMEOUT_MS,
   DEFAULT_TOOLS,
+  EFFORT_TO_THINKING,
   extractFinalText,
   MAX_OUTPUT_LINES,
   type Message,
   parseJsonlBuffer,
   RECURSION_ENV_VAR,
   type SubprocessParams,
+  saveFullOutput,
   truncate,
 } from "../extensions/delegate.js";
 
@@ -172,28 +175,36 @@ describe("computeStats", () => {
 
 describe("truncate", () => {
   it("returns text unchanged when under limit", () => {
-    expect(truncate("line1\nline2\nline3", 5)).toBe("line1\nline2\nline3");
+    const result = truncate("line1\nline2\nline3", 5);
+    expect(result.text).toBe("line1\nline2\nline3");
+    expect(result.truncated).toBe(false);
   });
 
   it("returns text unchanged at exact limit", () => {
-    expect(truncate("a\nb\nc", 3)).toBe("a\nb\nc");
+    const result = truncate("a\nb\nc", 3);
+    expect(result.text).toBe("a\nb\nc");
+    expect(result.truncated).toBe(false);
   });
 
   it("truncates and adds notice when over limit", () => {
     const result = truncate("a\nb\nc\nd\ne", 3);
-    expect(result).toContain("a\nb\nc");
-    expect(result).toContain("[TRUNCATED: showing 3 of 5 lines]");
-    expect(result).not.toContain("\nd\n");
+    expect(result.text).toContain("a\nb\nc");
+    expect(result.text).toContain("[TRUNCATED: showing 3 of 5 lines]");
+    expect(result.text).not.toContain("\nd\n");
+    expect(result.truncated).toBe(true);
   });
 
   it("handles single line within limit", () => {
-    expect(truncate("single line", 10)).toBe("single line");
+    const result = truncate("single line", 10);
+    expect(result.text).toBe("single line");
+    expect(result.truncated).toBe(false);
   });
 
   it("truncates to 1 line", () => {
     const result = truncate("a\nb\nc", 1);
-    expect(result).toContain("a");
-    expect(result).toContain("[TRUNCATED: showing 1 of 3 lines]");
+    expect(result.text).toContain("a");
+    expect(result.text).toContain("[TRUNCATED: showing 1 of 3 lines]");
+    expect(result.truncated).toBe(true);
   });
 });
 
@@ -266,6 +277,7 @@ describe("buildArgs", () => {
     expect(args).toContain("--tools");
     expect(args).toContain(DEFAULT_TOOLS);
     expect(args[args.length - 1]).toBe("investigate logs");
+    expect(args).not.toContain("--thinking");
   });
 
   it("includes append system prompt when provided", () => {
@@ -289,6 +301,54 @@ describe("buildArgs", () => {
     expect(args[idx + 1]).toBe("/my/session/dir");
     expect(args).not.toContain("");
   });
+
+  it("adds --thinking flag for effort: fast", () => {
+    const params: SubprocessParams = { task: "quick check", effort: "fast" };
+    const args = buildArgs(params, "/tmp/s", "/tmp/sys.md", null);
+    const idx = args.indexOf("--thinking");
+    expect(idx).toBeGreaterThan(-1);
+    expect(args[idx + 1]).toBe("low");
+  });
+
+  it("adds --thinking flag for effort: thorough", () => {
+    const params: SubprocessParams = { task: "deep analysis", effort: "thorough" };
+    const args = buildArgs(params, "/tmp/s", "/tmp/sys.md", null);
+    const idx = args.indexOf("--thinking");
+    expect(idx).toBeGreaterThan(-1);
+    expect(args[idx + 1]).toBe("high");
+  });
+
+  it("adds --thinking flag for effort: balanced", () => {
+    const params: SubprocessParams = { task: "normal work", effort: "balanced" };
+    const args = buildArgs(params, "/tmp/s", "/tmp/sys.md", null);
+    const idx = args.indexOf("--thinking");
+    expect(idx).toBeGreaterThan(-1);
+    expect(args[idx + 1]).toBe("medium");
+  });
+});
+
+describe("saveFullOutput", () => {
+  it("writes full output to file and returns path", () => {
+    const dir = makeTempDir("sp-fullout-");
+    const content = "line1\nline2\nline3\nline4\nline5";
+    const path = saveFullOutput(content, dir);
+    expect(path).toContain("full-output.md");
+    expect(readFileSync(path, "utf-8")).toBe(content);
+  });
+});
+
+describe("EFFORT_TO_THINKING", () => {
+  it("maps fast to low", () => {
+    expect(EFFORT_TO_THINKING.fast).toBe("low");
+  });
+
+  it("maps balanced to medium", () => {
+    expect(EFFORT_TO_THINKING.balanced).toBe("medium");
+  });
+
+  it("maps thorough to high", () => {
+    expect(EFFORT_TO_THINKING.thorough).toBe("high");
+  });
 });
 
 describe("constants", () => {
@@ -301,8 +361,12 @@ describe("constants", () => {
     expect(DEFAULT_TOOLS).toBe("read,bash,grep,find,ls");
   });
 
-  it("MAX_OUTPUT_LINES is a positive number", () => {
-    expect(MAX_OUTPUT_LINES).toBe(300);
+  it("MAX_OUTPUT_LINES defaults to 100", () => {
+    expect(MAX_OUTPUT_LINES).toBe(100);
+  });
+
+  it("DEFAULT_TIMEOUT_MS is 15 minutes", () => {
+    expect(DEFAULT_TIMEOUT_MS).toBe(15 * 60 * 1000);
   });
 
   it("RECURSION_ENV_VAR is the expected value", () => {

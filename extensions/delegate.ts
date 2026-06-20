@@ -21,8 +21,17 @@ const DEFAULT_SYSTEM_PROMPT = [
 ].join(" ");
 
 const DEFAULT_TOOLS = "read,bash,grep,find,ls";
-const MAX_OUTPUT_LINES = 300;
+const MAX_OUTPUT_LINES = 100;
+const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000;
 const RECURSION_ENV_VAR = "PI_SUBPROCESS_CHILD";
+
+type Effort = "fast" | "balanced" | "thorough";
+
+const EFFORT_TO_THINKING: Record<Effort, string> = {
+  fast: "low",
+  balanced: "medium",
+  thorough: "high",
+};
 
 interface MessageContent {
   type: string;
@@ -50,6 +59,9 @@ interface SubprocessStats {
   cost: number;
   durationMs: number;
   sessionDir: string;
+  timedOut: boolean;
+  outputTruncated: boolean;
+  fullOutputFile?: string;
 }
 
 interface SubprocessParams {
@@ -57,6 +69,8 @@ interface SubprocessParams {
   system_prompt?: string;
   tools?: string;
   max_lines?: number;
+  effort?: Effort;
+  timeout_ms?: number;
 }
 
 interface JsonEvent {
@@ -75,7 +89,11 @@ function extractFinalText(messages: Message[]): string {
   return "(no output)";
 }
 
-function computeStats(messages: Message[], startTime: number, sessionDir: string): SubprocessStats {
+function computeStats(
+  messages: Message[],
+  startTime: number,
+  sessionDir: string,
+): Omit<SubprocessStats, "timedOut" | "outputTruncated" | "fullOutputFile"> {
   let toolCalls = 0;
   let totalTokens = 0;
   let cost = 0;
@@ -102,10 +120,22 @@ function computeStats(messages: Message[], startTime: number, sessionDir: string
   };
 }
 
-function truncate(text: string, maxLines: number): string {
+interface TruncateResult {
+  text: string;
+  truncated: boolean;
+}
+
+function truncate(text: string, maxLines: number): TruncateResult {
   const lines = text.split("\n");
-  if (lines.length <= maxLines) return text;
-  return `${lines.slice(0, maxLines).join("\n")}\n\n[TRUNCATED: showing ${maxLines} of ${lines.length} lines]`;
+  if (lines.length <= maxLines) return { text, truncated: false };
+  const truncatedText = `${lines.slice(0, maxLines).join("\n")}\n\n[TRUNCATED: showing ${maxLines} of ${lines.length} lines]`;
+  return { text: truncatedText, truncated: true };
+}
+
+function saveFullOutput(text: string, sessionDir: string): string {
+  const outputPath = join(sessionDir, "full-output.md");
+  writeFileSync(outputPath, text);
+  return outputPath;
 }
 
 function parseJsonlBuffer(buffer: string, messages: Message[]): string {
@@ -145,6 +175,7 @@ function buildArgs(
   promptFile: string,
   appendFile: string | null,
 ): string[] {
+  const thinking = params.effort ? EFFORT_TO_THINKING[params.effort] : undefined;
   return [
     "--mode",
     "json",
@@ -154,6 +185,7 @@ function buildArgs(
     "--system-prompt",
     promptFile,
     ...(appendFile ? ["--append-system-prompt", appendFile] : []),
+    ...(thinking ? ["--thinking", thinking] : []),
     "--tools",
     params.tools || DEFAULT_TOOLS,
     params.task,
@@ -188,6 +220,16 @@ export default function piSubprocess(pi: ExtensionAPI) {
           description: `Max output lines returned (default: ${MAX_OUTPUT_LINES})`,
         }),
       ),
+      effort: Type.Optional(
+        Type.Union([Type.Literal("fast"), Type.Literal("balanced"), Type.Literal("thorough")], {
+          description: "Thinking depth: fast (low), balanced (medium), thorough (high)",
+        }),
+      ),
+      timeout_ms: Type.Optional(
+        Type.Number({
+          description: `Timeout in milliseconds (default: ${DEFAULT_TIMEOUT_MS / 1000}s)`,
+        }),
+      ),
     }),
 
     async execute(_id, params: SubprocessParams, signal, _onUpdate, ctx) {
@@ -195,6 +237,7 @@ export default function piSubprocess(pi: ExtensionAPI) {
       const runDir = buildSessionDir(ctx);
       const promptFile = join(runDir, "system.md");
       const appendFile = params.system_prompt ? join(runDir, "append.md") : null;
+      const timeout = params.timeout_ms ?? DEFAULT_TIMEOUT_MS;
 
       writeFileSync(promptFile, DEFAULT_SYSTEM_PROMPT);
       if (appendFile) writeFileSync(appendFile, params.system_prompt as string);
@@ -203,6 +246,7 @@ export default function piSubprocess(pi: ExtensionAPI) {
 
       const messages: Message[] = [];
       let stderr = "";
+      let timedOut = false;
 
       try {
         await new Promise<void>((resolve, reject) => {
@@ -212,7 +256,15 @@ export default function piSubprocess(pi: ExtensionAPI) {
             env: { ...process.env, [RECURSION_ENV_VAR]: "1" },
           });
 
-          signal?.addEventListener("abort", () => child.kill());
+          const timer = setTimeout(() => {
+            timedOut = true;
+            child.kill();
+          }, timeout);
+
+          signal?.addEventListener("abort", () => {
+            clearTimeout(timer);
+            child.kill();
+          });
 
           let buffer = "";
           child.stdout.on("data", (chunk: Buffer) => {
@@ -224,11 +276,15 @@ export default function piSubprocess(pi: ExtensionAPI) {
           });
 
           child.on("close", (code) => {
+            clearTimeout(timer);
             if (code === 0 || messages.length > 0) resolve();
             else reject(new Error(`Worker exited with code ${code}: ${stderr.slice(0, 500)}`));
           });
 
-          child.on("error", reject);
+          child.on("error", (err) => {
+            clearTimeout(timer);
+            reject(err);
+          });
         });
       } finally {
         try {
@@ -244,8 +300,15 @@ export default function piSubprocess(pi: ExtensionAPI) {
       }
 
       const maxLines = params.max_lines ?? MAX_OUTPUT_LINES;
-      const output = truncate(extractFinalText(messages), maxLines);
-      const stats = computeStats(messages, startTime, runDir);
+      const rawOutput = extractFinalText(messages);
+      const { text: output, truncated } = truncate(rawOutput, maxLines);
+      const fullOutputFile = truncated ? saveFullOutput(rawOutput, runDir) : undefined;
+      const stats: SubprocessStats = {
+        ...computeStats(messages, startTime, runDir),
+        timedOut,
+        outputTruncated: truncated,
+        fullOutputFile,
+      };
 
       return {
         content: [{ type: "text", text: output }],
@@ -255,16 +318,28 @@ export default function piSubprocess(pi: ExtensionAPI) {
   });
 }
 
-export type { JsonEvent, Message, MessageContent, MessageUsage, SubprocessParams, SubprocessStats };
+export type {
+  Effort,
+  JsonEvent,
+  Message,
+  MessageContent,
+  MessageUsage,
+  SubprocessParams,
+  SubprocessStats,
+  TruncateResult,
+};
 export {
   buildArgs,
   buildSessionDir,
   computeStats,
   DEFAULT_SYSTEM_PROMPT,
+  DEFAULT_TIMEOUT_MS,
   DEFAULT_TOOLS,
+  EFFORT_TO_THINKING,
   extractFinalText,
   MAX_OUTPUT_LINES,
   parseJsonlBuffer,
   RECURSION_ENV_VAR,
+  saveFullOutput,
   truncate,
 };

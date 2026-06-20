@@ -70,16 +70,30 @@ Child sessions are saved alongside the parent session for post-hoc analysis:
 | `task` | string | yes | — | What the worker should do |
 | `system_prompt` | string | no | — | Custom prompt appended to the default worker prompt |
 | `tools` | string | no | `read,bash,grep,find,ls` | Comma-separated tools for the worker |
-| `max_lines` | number | no | `300` | Maximum output lines returned |
+| `max_lines` | number | no | `100` | Maximum output lines returned |
+| `effort` | `fast` \| `balanced` \| `thorough` | no | — | Thinking depth (maps to Pi `--thinking` low/medium/high) |
+| `timeout_ms` | number | no | `900000` (15 min) | Kill the subprocess after this duration |
 
 ## Tool result
 
 The tool returns:
 
 - **`content`** — the subprocess's final text (truncated if over `max_lines`)
-- **`details`** — stats object with `turns`, `toolCalls`, `totalTokens`, `cost`, `durationMs`, `sessionDir`
+- **`details`** — stats object:
 
-The `details` field is visible to the parent agent but not injected into the context text, keeping the parent's context budget focused on the actual findings.
+| Field | Type | Description |
+|-------|------|-------------|
+| `turns` | number | Assistant turns in the child session |
+| `toolCalls` | number | Total tool invocations |
+| `totalTokens` | number | Token consumption |
+| `cost` | number | API cost |
+| `durationMs` | number | Wall-clock duration |
+| `sessionDir` | string | Path to child session JSONL |
+| `timedOut` | boolean | Whether the timeout killed the child |
+| `outputTruncated` | boolean | Whether output exceeded `max_lines` |
+| `fullOutputFile` | string? | Path to untruncated output (only when truncated) |
+
+The `details` field is visible to the parent agent but not injected into the context text. When output is truncated, the full text is saved to `full-output.md` in the session directory for post-hoc review.
 
 ## When to use
 
