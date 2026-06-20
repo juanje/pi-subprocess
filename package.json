@@ -1,19 +1,19 @@
 {
-  "name": "pi-delegate",
+  "name": "pi-subprocess",
   "version": "0.1.0",
-  "description": "Minimal subagent delegation for Pi agents. Spawns isolated Pi subprocesses and returns curated results.",
+  "description": "Minimal subprocess isolation for Pi agents. Spawns isolated Pi subprocesses and returns curated results.",
   "type": "module",
   "license": "MIT",
   "author": "Juanje Ojeda",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/juanje/pi-delegate.git"
+    "url": "git+https://github.com/juanje/pi-subprocess.git"
   },
   "keywords": [
     "pi-package",
     "pi",
     "pi-coding-agent",
-    "delegate",
+    "subprocess",
     "subagent",
     "context-isolation"
   ],

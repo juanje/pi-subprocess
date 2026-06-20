@@ -1,10 +1,10 @@
 /**
- * Pi Delegate Extension
+ * Pi Subprocess Extension
  *
- * Minimal subagent delegation for Pi. Registers a `delegate` tool that spawns
- * an isolated Pi subprocess, waits for it to finish, and returns the final
- * assistant text. The parent's context stays clean — only the curated result
- * comes back.
+ * Minimal subprocess isolation for Pi. Registers a `subprocess` tool that
+ * spawns an isolated Pi subprocess, waits for it to finish, and returns the
+ * final assistant text. The parent's context stays clean — only the curated
+ * result comes back.
  */
 
 import { spawn } from "node:child_process";
@@ -22,7 +22,7 @@ const DEFAULT_SYSTEM_PROMPT = [
 
 const DEFAULT_TOOLS = "read,bash,grep,find,ls";
 const MAX_OUTPUT_LINES = 300;
-const RECURSION_ENV_VAR = "PI_DELEGATE_CHILD";
+const RECURSION_ENV_VAR = "PI_SUBPROCESS_CHILD";
 
 interface MessageContent {
   type: string;
@@ -43,7 +43,7 @@ interface Message {
   usage?: MessageUsage;
 }
 
-interface DelegateStats {
+interface SubprocessStats {
   turns: number;
   toolCalls: number;
   totalTokens: number;
@@ -52,7 +52,7 @@ interface DelegateStats {
   sessionDir: string;
 }
 
-interface DelegateParams {
+interface SubprocessParams {
   task: string;
   system_prompt?: string;
   tools?: string;
@@ -75,7 +75,7 @@ function extractFinalText(messages: Message[]): string {
   return "(no output)";
 }
 
-function computeStats(messages: Message[], startTime: number, sessionDir: string): DelegateStats {
+function computeStats(messages: Message[], startTime: number, sessionDir: string): SubprocessStats {
   let toolCalls = 0;
   let totalTokens = 0;
   let cost = 0;
@@ -128,19 +128,19 @@ function parseJsonlBuffer(buffer: string, messages: Message[]): string {
 function buildSessionDir(ctx: {
   sessionManager: { getSessionFile?: () => string | undefined };
 }): string {
-  const delegateId = Math.random().toString(36).slice(2, 10);
+  const subprocId = Math.random().toString(36).slice(2, 10);
   const parentSession = ctx.sessionManager.getSessionFile?.();
   const parentDir = parentSession ? parentSession.replace(/\.jsonl$/, "") : null;
   if (parentDir) {
-    const dir = join(parentDir, `delegate-${delegateId}`);
+    const dir = join(parentDir, `subprocess-${subprocId}`);
     mkdirSync(dir, { recursive: true });
     return dir;
   }
-  return mkdtempSync(join(tmpdir(), "pi-delegate-"));
+  return mkdtempSync(join(tmpdir(), "pi-subprocess-"));
 }
 
 function buildArgs(
-  params: DelegateParams,
+  params: SubprocessParams,
   sessionDir: string,
   promptFile: string,
   appendFile: string | null,
@@ -160,17 +160,17 @@ function buildArgs(
   ];
 }
 
-export default function piDelegate(pi: ExtensionAPI) {
+export default function piSubprocess(pi: ExtensionAPI) {
   if (process.env[RECURSION_ENV_VAR] === "1") return;
 
   pi.registerTool({
-    name: "delegate",
-    label: "Delegate",
+    name: "subprocess",
+    label: "Subprocess",
     description:
-      "Delegate a task to an isolated subagent that investigates code, logs, or documents. " +
-      "The subagent runs in its own context and returns a curated summary. " +
+      "Run a task in an isolated subprocess that investigates code, logs, or documents. " +
+      "The subprocess runs in its own context and returns a curated summary. " +
       "Use when investigation would flood your context with raw data, or when " +
-      "the user or a skill asks to run something in a subagent.",
+      "the user or a skill asks to run something in a subprocess.",
     parameters: Type.Object({
       task: Type.String({ description: "What the worker should do" }),
       system_prompt: Type.Optional(
@@ -190,7 +190,7 @@ export default function piDelegate(pi: ExtensionAPI) {
       ),
     }),
 
-    async execute(_id, params: DelegateParams, signal, _onUpdate, ctx) {
+    async execute(_id, params: SubprocessParams, signal, _onUpdate, ctx) {
       const startTime = Date.now();
       const runDir = buildSessionDir(ctx);
       const promptFile = join(runDir, "system.md");
@@ -255,7 +255,7 @@ export default function piDelegate(pi: ExtensionAPI) {
   });
 }
 
-export type { DelegateParams, DelegateStats, JsonEvent, Message, MessageContent, MessageUsage };
+export type { JsonEvent, Message, MessageContent, MessageUsage, SubprocessParams, SubprocessStats };
 export {
   buildArgs,
   buildSessionDir,

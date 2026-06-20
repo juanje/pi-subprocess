@@ -1,40 +1,40 @@
-# pi-delegate
+# pi-subprocess
 
-Minimal subagent delegation for [Pi](https://pi.dev) agents. Spawns isolated Pi subprocesses and returns curated results — keeps the parent's context clean.
+Minimal subprocess isolation for [Pi](https://pi.dev) agents. Spawns isolated Pi subprocesses and returns curated results — keeps the parent's context clean.
 
 ## Install
 
 From npm:
 
 ```bash
-pi install npm:pi-delegate
+pi install npm:pi-subprocess
 ```
 
 From git:
 
 ```bash
-pi install git+https://github.com/juanje/pi-delegate.git
+pi install git+https://github.com/juanje/pi-subprocess.git
 ```
 
 Or load directly without installing:
 
 ```bash
-pi -e /path/to/pi-delegate/extensions/delegate.ts
+pi -e /path/to/pi-subprocess/extensions/delegate.ts
 ```
 
 ## Quick start
 
-Once installed, a `delegate` tool becomes available in your Pi session:
+Once installed, a `subprocess` tool becomes available in your Pi session:
 
 ```
-> Use delegate to investigate how error handling works in the tools/ directory
+> Use subprocess to investigate how error handling works in the tools/ directory
 ```
 
 The agent spawns an isolated Pi subprocess that investigates independently and returns a summary. The parent session's context grows by the summary size only, not by all the files the subagent read.
 
 ## How it works
 
-The extension registers a `delegate` tool that:
+The extension registers a `subprocess` tool that:
 
 1. **Spawns** a child Pi process in JSON mode with its own system prompt
 2. **Streams** the child's JSONL output, collecting `message_end` events
@@ -48,7 +48,7 @@ The child runs in its own process with a fresh context window. It inherits the p
 
 ### Recursion prevention
 
-The extension sets `PI_DELEGATE_CHILD=1` in the child's environment. If this variable is already set, the extension skips registration entirely — no infinite recursion.
+The extension sets `PI_SUBPROCESS_CHILD=1` in the child's environment. If this variable is already set, the extension skips registration entirely — no infinite recursion.
 
 ### Session persistence
 
@@ -58,7 +58,7 @@ Child sessions are saved alongside the parent session for post-hoc analysis:
 ~/.pi/agent/sessions/my-project/
 ├── 2026-06-19_abc123.jsonl          # parent session
 └── 2026-06-19_abc123/
-    └── delegate-x7k9m2/             # child session
+    └── subprocess-x7k9m2/           # child session
         ├── session.jsonl
         └── ...
 ```
@@ -76,7 +76,7 @@ Child sessions are saved alongside the parent session for post-hoc analysis:
 
 The tool returns:
 
-- **`content`** — the subagent's final text (truncated if over `max_lines`)
+- **`content`** — the subprocess's final text (truncated if over `max_lines`)
 - **`details`** — stats object with `turns`, `toolCalls`, `totalTokens`, `cost`, `durationMs`, `sessionDir`
 
 The `details` field is visible to the parent agent but not injected into the context text, keeping the parent's context budget focused on the actual findings.
@@ -85,7 +85,7 @@ The `details` field is visible to the parent agent but not injected into the con
 
 - **Investigation would flood context** — reading multiple files, grepping large codebases, fetching logs
 - **Research before synthesis** — delegate the fact-finding, keep the parent focused on analysis
-- **Skill-directed delegation** — skills can explicitly invoke `delegate` for specific substeps
+- **Skill-directed isolation** — skills can explicitly invoke `subprocess` for specific substeps
 
 ## When NOT to use
 
@@ -96,8 +96,8 @@ The `details` field is visible to the parent agent but not injected into the con
 ## Development
 
 ```bash
-git clone https://github.com/juanje/pi-delegate.git
-cd pi-delegate
+git clone https://github.com/juanje/pi-subprocess.git
+cd pi-subprocess
 npm install
 npm run check    # typecheck + lint + test
 ```

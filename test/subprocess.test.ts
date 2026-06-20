@@ -7,12 +7,12 @@ import {
   computeStats,
   DEFAULT_SYSTEM_PROMPT,
   DEFAULT_TOOLS,
-  type DelegateParams,
   extractFinalText,
   MAX_OUTPUT_LINES,
   type Message,
   parseJsonlBuffer,
   RECURSION_ENV_VAR,
+  type SubprocessParams,
   truncate,
 } from "../extensions/delegate.js";
 
@@ -254,7 +254,7 @@ describe("parseJsonlBuffer", () => {
 
 describe("buildArgs", () => {
   it("builds default args", () => {
-    const params: DelegateParams = { task: "investigate logs" };
+    const params: SubprocessParams = { task: "investigate logs" };
     const args = buildArgs(params, "/tmp/session", "/tmp/system.md", null);
     expect(args).toContain("--mode");
     expect(args).toContain("json");
@@ -269,21 +269,21 @@ describe("buildArgs", () => {
   });
 
   it("includes append system prompt when provided", () => {
-    const params: DelegateParams = { task: "do work" };
+    const params: SubprocessParams = { task: "do work" };
     const args = buildArgs(params, "/tmp/s", "/tmp/sys.md", "/tmp/append.md");
     expect(args).toContain("--append-system-prompt");
     expect(args).toContain("/tmp/append.md");
   });
 
   it("uses custom tools when provided", () => {
-    const params: DelegateParams = { task: "read only", tools: "read" };
+    const params: SubprocessParams = { task: "read only", tools: "read" };
     const args = buildArgs(params, "/tmp/s", "/tmp/sys.md", null);
     expect(args).toContain("read");
     expect(args).not.toContain(DEFAULT_TOOLS);
   });
 
   it("places session dir directly in args (no placeholder)", () => {
-    const params: DelegateParams = { task: "work" };
+    const params: SubprocessParams = { task: "work" };
     const args = buildArgs(params, "/my/session/dir", "/tmp/sys.md", null);
     const idx = args.indexOf("--session-dir");
     expect(args[idx + 1]).toBe("/my/session/dir");
@@ -306,6 +306,6 @@ describe("constants", () => {
   });
 
   it("RECURSION_ENV_VAR is the expected value", () => {
-    expect(RECURSION_ENV_VAR).toBe("PI_DELEGATE_CHILD");
+    expect(RECURSION_ENV_VAR).toBe("PI_SUBPROCESS_CHILD");
   });
 });
