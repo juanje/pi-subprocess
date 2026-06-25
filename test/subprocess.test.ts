@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,6 +14,8 @@ import {
   type Message,
   parseJsonlBuffer,
   RECURSION_ENV_VAR,
+  resolveBasePrompt,
+  SUBPROCESS_SYSTEM_FILE,
   type SubprocessParams,
   saveFullOutput,
   truncate,
@@ -351,6 +353,30 @@ describe("EFFORT_TO_THINKING", () => {
   });
 });
 
+describe("resolveBasePrompt", () => {
+  const originalCwd = process.cwd();
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+  });
+
+  it("returns DEFAULT_SYSTEM_PROMPT when project file is missing", () => {
+    const dir = makeTempDir("sp-nosys-");
+    process.chdir(dir);
+    expect(resolveBasePrompt()).toBe(DEFAULT_SYSTEM_PROMPT);
+  });
+
+  it("returns project file content when .pi/SUBPROCESS_SYSTEM.md exists", () => {
+    const dir = makeTempDir("sp-sys-");
+    const piDir = join(dir, ".pi");
+    mkdirSync(piDir, { recursive: true });
+    const content = "You are a CTC investigation worker.\nFollow steps exactly.";
+    writeFileSync(join(piDir, "SUBPROCESS_SYSTEM.md"), content);
+    process.chdir(dir);
+    expect(resolveBasePrompt()).toBe(content);
+  });
+});
+
 describe("constants", () => {
   it("DEFAULT_SYSTEM_PROMPT is a non-empty string", () => {
     expect(DEFAULT_SYSTEM_PROMPT.length).toBeGreaterThan(50);
@@ -371,5 +397,9 @@ describe("constants", () => {
 
   it("RECURSION_ENV_VAR is the expected value", () => {
     expect(RECURSION_ENV_VAR).toBe("PI_SUBPROCESS_CHILD");
+  });
+
+  it("SUBPROCESS_SYSTEM_FILE is the expected path", () => {
+    expect(SUBPROCESS_SYSTEM_FILE).toBe(".pi/SUBPROCESS_SYSTEM.md");
   });
 });

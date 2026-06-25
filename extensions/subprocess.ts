@@ -8,7 +8,14 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -21,9 +28,18 @@ const DEFAULT_SYSTEM_PROMPT = [
 ].join(" ");
 
 const DEFAULT_TOOLS = "read,bash,grep,find,ls";
+const SUBPROCESS_SYSTEM_FILE = ".pi/SUBPROCESS_SYSTEM.md";
 const MAX_OUTPUT_LINES = 100;
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000;
 const RECURSION_ENV_VAR = "PI_SUBPROCESS_CHILD";
+
+function resolveBasePrompt(): string {
+  const filePath = join(process.cwd(), SUBPROCESS_SYSTEM_FILE);
+  if (existsSync(filePath)) {
+    return readFileSync(filePath, "utf-8");
+  }
+  return DEFAULT_SYSTEM_PROMPT;
+}
 
 type Effort = "fast" | "balanced" | "thorough";
 
@@ -239,7 +255,7 @@ export default function piSubprocess(pi: ExtensionAPI) {
       const appendFile = params.system_prompt ? join(runDir, "append.md") : null;
       const timeout = params.timeout_ms ?? DEFAULT_TIMEOUT_MS;
 
-      writeFileSync(promptFile, DEFAULT_SYSTEM_PROMPT);
+      writeFileSync(promptFile, resolveBasePrompt());
       if (appendFile) writeFileSync(appendFile, params.system_prompt as string);
 
       const args = buildArgs(params, runDir, promptFile, appendFile);
@@ -340,6 +356,8 @@ export {
   MAX_OUTPUT_LINES,
   parseJsonlBuffer,
   RECURSION_ENV_VAR,
+  resolveBasePrompt,
+  SUBPROCESS_SYSTEM_FILE,
   saveFullOutput,
   truncate,
 };

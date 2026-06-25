@@ -46,6 +46,20 @@ The extension registers a `subprocess` tool that:
 
 The child runs in its own process with a fresh context window. It inherits the parent's working directory and environment (including permission policies from `pi-permission-gate` if installed), but none of the parent's conversation history.
 
+### Project system prompt
+
+If `.pi/SUBPROCESS_SYSTEM.md` exists in the working directory, its content replaces the default generic worker prompt. This lets a project define subprocess behavior once — identity, rules, tool constraints — instead of repeating it in every `system_prompt` call.
+
+The `system_prompt` parameter still appends on top of whichever base is used.
+
+Prompt hierarchy:
+
+```
+.pi/SUBPROCESS_SYSTEM.md (or built-in default)
+  └── system_prompt parameter (per-call specialization)
+        └── task parameter (the work item for this subprocess)
+```
+
 ### Recursion prevention
 
 The extension sets `PI_SUBPROCESS_CHILD=1` in the child's environment. If this variable is already set, the extension skips registration entirely — no infinite recursion.
